@@ -75,32 +75,6 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Deploy to Netlify
-
-1. Push this repository to GitHub.
-2. In Netlify, select **Add new site → Import an existing project**.
-3. Select the GitHub repository.
-4. Use these settings:
-   - Build command: leave blank
-   - Publish directory: `.`
-5. Deploy the site.
-
-The included `netlify.toml` configures the static publish directory. Security headers are defined in `_headers`.
-
-## Project structure
-
-```text
-.
-├── index.html                    # Static browser application
-├── app.py                        # Optional Streamlit application
-├── requirements.txt              # Streamlit dependencies
-├── netlify.toml                  # Netlify configuration
-├── _headers                      # Netlify security headers
-├── sample-data.csv               # CSV test fixture
-├── sample-data.json              # JSON test fixture
-└── ai_jobs_salaries_clean.csv    # Larger validation dataset
-```
-
 ## Performance and limitations
 
 - There is no application-level file-size threshold. Browser memory, device capacity, and hosting/browser limits still apply to very large files.
