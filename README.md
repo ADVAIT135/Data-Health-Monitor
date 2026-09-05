@@ -85,7 +85,7 @@ streamlit run app.py
 
 ## Validation results
 
-The application was validated with the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce), using the CSV files in the local `archive/` folder.
+The application was validated with the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce), using the CSV files
 
 | File | Rows | Health score |
 | --- | ---: | ---: |
