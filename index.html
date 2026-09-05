@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Data Health Monitor</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, system-ui, sans-serif;
+      --page-bg: #eef3f8;
+      --surface: #ffffff;
+      --surface-muted: #f7f9fc;
+      --text: #172b4d;
+      --text-muted: #526581;
+      --border: #cbd5e1;
+      --primary: #2457c5;
+      --primary-dark: #173f96;
+      --chart-label: #243b5a;
+    }
+    body { margin: 0; background: var(--page-bg); color: var(--text); }
+    main { max-width: 1160px; margin: 0 auto; padding: 48px 24px; }
+    h1, h2, p { margin-top: 0; }
+    h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3.5rem); }
+    h2 { margin-bottom: 16px; font-size: 1.1rem; }
+    .muted { color: var(--text-muted); }
+    .hero, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 8px 28px #17324d14; }
+    .hero { padding: 40px; margin-bottom: 24px; }
+    .upload { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 28px; }
+    .dataset-picker { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 14px; }
+    .dataset-picker select { min-width: 260px; }
+    .settings { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin-top: 20px; }
+    label { display: grid; gap: 6px; color: var(--text); font-size: .9rem; font-weight: 700; }
+    input[type=number] { width: 110px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; color: var(--text); background: var(--surface); }
+    input[type=file] { max-width: 100%; padding: 12px; border: 1px dashed #7890ad; border-radius: 10px; background: var(--surface-muted); color: var(--text); }
+    button { border: 0; border-radius: 10px; padding: 12px 18px; background: var(--primary); color: #fff; font-weight: 700; cursor: pointer; }
+    button:hover { background: var(--primary-dark); }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #8bb4ff; outline-offset: 2px; }
+    .hidden { display: none; }
+    .score { display: flex; align-items: center; gap: 22px; padding: 24px; margin-bottom: 24px; }
+    .score-value { display: grid; place-items: center; width: 112px; height: 112px; border-radius: 50%; background: #dce8ff; color: var(--primary-dark); font-size: 1.6rem; font-weight: 800; }
+    .metrics, .columns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .metric { padding: 20px; }
+    .metric strong { display: block; margin-top: 8px; font-size: 1.8rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+    .card { padding: 24px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eaecf0; white-space: nowrap; }
+    th { color: var(--text); font-weight: 700; background: var(--surface-muted); }
+    .bar-row { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr 48px; gap: 10px; align-items: center; margin: 12px 0; }
+    .bar { height: 10px; border-radius: 8px; background: #dce8f7; overflow: hidden; }
+    .bar span { display: block; height: 100%; background: var(--primary); }
+    .error { color: #b42318; margin-top: 12px; font-weight: 600; }
+    .notice { padding: 12px 14px; border-radius: 10px; background: #e4edf8; color: var(--text); font-size: .9rem; }
+    .issue { padding: 12px 14px; border-left: 4px solid #c56a00; background: #fff4df; margin: 8px 0; color: #533200; }
+    .insight-controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; margin-bottom: 20px; }
+    .insight-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: -6px 0 18px; }
+    .insight-actions input[type=range] { width: 150px; accent-color: #3458d4; }
+    .check { display: flex; align-items: center; gap: 7px; }
+    .check input { width: 18px; height: 18px; accent-color: #3458d4; }
+    select { min-width: 170px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+    .chart-wrap { min-height: 320px; overflow-x: auto; }
+    .chart-wrap svg { display: block; min-width: 560px; width: 100%; height: 320px; }
+    .chart-empty { display: grid; place-items: center; min-height: 280px; color: var(--text-muted); text-align: center; }
+    .insight-brief { margin-top: 18px; padding: 18px; border: 1px solid #b9cbea; border-radius: 12px; background: #edf4ff; color: var(--text); }
+    .insight-brief h3 { margin: 0 0 8px; font-size: 1rem; }
+    .insight-brief p { margin: 6px 0; }
+    @media (max-width: 760px) { main { padding: 24px 14px; } .hero { padding: 24px; } .metrics, .columns, .grid { grid-template-columns: 1fr 1fr; } .score { align-items: flex-start; } }
+    @media (max-width: 480px) { .metrics, .columns, .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <h1>📊 Data Health Monitor</h1>
+    <p class="muted">Upload a CSV to identify quality issues before they affect your analysis.</p>
+    <div class="upload">
+      <label>Files
+        <input id="file-input" type="file" multiple accept=".csv,.tsv,.txt,.json,.xlsx,.xls,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+      </label>
+      <label>Folder
+        <input id="folder-input" type="file" webkitdirectory directory multiple accept=".csv,.tsv,.txt,.json,.xlsx,.xls,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+      </label>
+      <button id="report-button" class="hidden" type="button">Download CSV report</button>
+      <button id="pdf-button" class="hidden" type="button">Print / Save PDF</button>
+    </div>
+    <div class="dataset-picker hidden" id="dataset-picker">
+      <label for="dataset-select">Dataset to analyze</label>
+      <select id="dataset-select"></select>
+      <span id="dataset-status" class="muted"></span>
+    </div>
+    <div class="settings" aria-label="Quality thresholds">
+      <label>Missing alert (%)
+        <input id="missing-threshold" type="number" min="0" max="100" value="5">
+      </label>
+      <label>Duplicate alert (%)
+        <input id="duplicate-threshold" type="number" min="0" max="100" value="1">
+      </label>
+      <label>Outlier alert (%)
+        <input id="outlier-threshold" type="number" min="0" max="100" value="1">
+      </label>
+    </div>
+    <p id="error" class="error"></p>
+  </section>
+
+  <section id="results" class="hidden">
+    <div class="card score">
+      <div id="score-value" class="score-value">0/100</div>
+      <div><h2 id="score-heading">Health score</h2><p id="score-description" class="muted"></p></div>
+    </div>
+    <div id="metrics" class="metrics"></div>
+    <div class="grid">
+      <div class="card"><h2>Missing values by column</h2><div id="missing-chart"></div></div>
+      <div class="card"><h2>Column summary</h2><div id="summary"></div></div>
+    </div>
+    <div class="card"><h2>Issues and recommendations</h2><div id="issues"></div></div>
+    <br>
+    <div class="card">
+      <h2>Data insights</h2>
+      <div class="insight-controls">
+        <label>Chart type
+          <select id="chart-type">
+            <option value="auto">Automatic</option>
+            <option value="histogram">Distribution</option>
+            <option value="bar">Category counts</option>
+            <option value="scatter">Relationship</option>
+              <option value="pie">Pie chart</option>
+              <option value="violin">Violin plot</option>
+              <option value="map">Coordinate map</option>
+          </select>
+        </label>
+        <label id="x-label">X axis
+          <select id="x-column"></select>
+        </label>
+        <label id="y-label">Y axis
+          <select id="y-column"></select>
+        </label>
+      </div>
+      <div class="insight-actions" aria-label="Chart display controls">
+        <label>Zoom <input id="chart-zoom" type="range" min="75" max="175" value="100" step="5"> <output id="chart-zoom-value">100%</output></label>
+        <label>Plot width <input id="plot-width" type="range" min="640" max="1400" value="720" step="40"> <output id="plot-width-value">720px</output></label>
+        <label>Plot height <input id="plot-height" type="range" min="280" max="650" value="320" step="10"> <output id="plot-height-value">320px</output></label>
+        <label class="check"><input id="show-values" type="checkbox" checked> Show values</label>
+        <button id="reset-chart" type="button">Reset chart</button>
+      </div>
+      <div id="chart" class="chart-wrap"></div>
+      <div id="insight-brief" class="insight-brief" aria-live="polite"></div>
+    </div>
+    <br>
+    <div class="card"><h2>Data preview</h2><div id="preview"></div></div>
+  </section>
+</main>
+<script>
+  const fileInput = document.querySelector("#file-input");
+  const folderInput = document.querySelector("#folder-input");
+  const results = document.querySelector("#results");
+  const error = document.querySelector("#error");
+  const reportButton = document.querySelector("#report-button");
+  const pdfButton = document.querySelector("#pdf-button");
+  const datasetPicker = document.querySelector("#dataset-picker");
+  const datasetSelect = document.querySelector("#dataset-select");
+  const datasetStatus = document.querySelector("#dataset-status");
+  const chartType = document.querySelector("#chart-type");
+  const xColumn = document.querySelector("#x-column");
+  const yColumn = document.querySelector("#y-column");
+  const chartZoom = document.querySelector("#chart-zoom");
+  const plotWidthInput = document.querySelector("#plot-width");
+  const plotHeightInput = document.querySelector("#plot-height");
+  const showValues = document.querySelector("#show-values");
+  const resetChart = document.querySelector("#reset-chart");
+  let currentRows = [];
+  let currentData = null;
+  let latestReport = [];
+  let selectedFiles = [];
+
+  function parseCsv(text, delimiter = ",") {
+    const rows = []; let row = []; let cell = ""; let quoted = false;
+    for (let i = 0; i < text.length; i += 1) {
+      const character = text[i], next = text[i + 1];
+      if (character === '"' && quoted && next === '"') { cell += '"'; i += 1; }
+      else if (character === '"') quoted = !quoted;
+      else if (character === delimiter && !quoted) { row.push(cell); cell = ""; }
+      else if ((character === "\n" || character === "\r") && !quoted) {
+        if (character === "\r" && next === "\n") i += 1;
+        row.push(cell); if (row.some(value => value.trim())) rows.push(row);
+        row = []; cell = "";
+      } else cell += character;
+    }
+    if (quoted) throw new Error("The CSV contains an unclosed quoted value.");
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    if (rows.length < 2) throw new Error("The CSV must include a header and at least one data row.");
+    const headers = rows[0].map((header, index) => header.trim() || `Column ${index + 1}`);
+    if (new Set(headers.map(header => header.toLowerCase())).size !== headers.length) throw new Error("The CSV contains duplicate column names.");
+    if (rows.slice(1).some(values => values.length > headers.length)) throw new Error("The CSV contains rows with more values than its header.");
+    return rows.slice(1).map(values => Object.fromEntries(headers.map((header, index) => [header, (values[index] || "").trim()])));
+  }
+  function normalizeRows(value) {
+    if (!Array.isArray(value) || !value.length || !value.every(item => item && typeof item === "object" && !Array.isArray(item))) {
+      throw new Error("The file must contain a table: an array of JSON objects or a worksheet with headers.");
+    }
+    const columns = [...new Set(value.flatMap(item => Object.keys(item)))];
+    if (!columns.length) throw new Error("The uploaded file does not contain any columns.");
+    return value.map(item => Object.fromEntries(columns.map(column => [column, item[column] == null ? "" : String(item[column])] )));
+  }
+  function parseJson(text) {
+    let value;
+    try { value = JSON.parse(text); } catch (exception) { throw new Error(`Could not parse JSON: ${exception.message}`); }
+    if (!Array.isArray(value) && value && Array.isArray(value.data)) value = value.data;
+    return normalizeRows(value);
+  }
+  async function parseFile(file) {
+    const extension = file.name.toLowerCase().split(".").pop();
+    if (extension === "json") return parseJson(await file.text());
+    if (["xlsx", "xls"].includes(extension)) {
+      if (!window.XLSX) throw new Error("Excel support could not load. Check your internet connection and try again.");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      return normalizeRows(XLSX.utils.sheet_to_json(firstSheet, { defval: "" }));
+    }
+    const text = await file.text();
+    const firstLine = text.split(/\r?\n/, 1)[0];
+    const delimiter = extension === "tsv" || firstLine.includes("\t") ? "\t" : ",";
+    return parseCsv(text, delimiter);
+  }
+
+  function isMissing(value) { return value === "" || value.toLowerCase() === "null" || value.toLowerCase() === "na"; }
+  function numericValues(rows, column) {
+    const values = rows.map(row => row[column]).filter(value => !isMissing(value)).map(Number);
+    return values.every(Number.isFinite) ? values : [];
+  }
+  function percentile(values, fraction) {
+    const sorted = [...values].sort((a, b) => a - b), index = (sorted.length - 1) * fraction;
+    const lower = Math.floor(index), upper = Math.ceil(index);
+    return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+  }
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character]));
+  }
+  function analyze(rows, thresholds) {
+    const columns = Object.keys(rows[0]), totalCells = rows.length * columns.length;
+    const missingByColumn = Object.fromEntries(columns.map(column => [column, rows.filter(row => isMissing(row[column])).length]));
+    const missingCells = Object.values(missingByColumn).reduce((sum, value) => sum + value, 0);
+    const duplicateRows = rows.length - new Set(rows.map(row => JSON.stringify(row))).size;
+    const numericColumns = columns.filter(column => numericValues(rows, column).length >= 4);
+    let outlierCells = 0;
+    numericColumns.forEach(column => {
+      const values = numericValues(rows, column), low = percentile(values, .25), high = percentile(values, .75), range = high - low;
+      if (range) outlierCells += values.filter(value => value < low - 1.5 * range || value > high + 1.5 * range).length;
+    });
+    const missingRate = missingCells / totalCells, duplicateRate = duplicateRows / rows.length;
+    const outlierRate = numericColumns.length ? outlierCells / (rows.length * numericColumns.length) : 0;
+    const score = Math.round(100 * (.5 * (1 - missingRate) + .3 * (1 - duplicateRate) + .2 * (1 - outlierRate)) * 10) / 10;
+    const issues = [];
+    if (missingRate * 100 > thresholds.missing) issues.push(`Missing data is ${formatPercent(missingRate)}, above the ${thresholds.missing}% threshold. Consider imputation or source validation.`);
+    if (duplicateRate * 100 > thresholds.duplicates) issues.push(`Duplicate rows are ${formatPercent(duplicateRate)}, above the ${thresholds.duplicates}% threshold. Deduplicate using a stable record identifier.`);
+    if (outlierRate * 100 > thresholds.outliers) issues.push(`Numeric outliers represent ${formatPercent(outlierRate)} of numeric cells. Review extreme values with domain experts.`);
+    if (!issues.length) issues.push("No configured quality thresholds were breached.");
+    return { columns, missingByColumn, missingCells, duplicateRows, numericColumns, outlierCells, score, missingRate, duplicateRate, outlierRate, issues, thresholds };
+  }
+  function formatPercent(value) { return `${(value * 100).toFixed(1)}%`; }
+  function numericColumns(rows, columns) { return columns.filter(column => numericValues(rows, column).length >= 2); }
+  function chooseAutomaticChart(data) {
+    const numeric = numericColumns(currentRows, data.columns);
+    const categorical = data.columns.filter(column => !numeric.includes(column));
+    const lowCardinality = categorical.find(column => new Set(currentRows.map(row => row[column])).size <= 8);
+    if (numeric.length >= 2) return "scatter";
+    if (numeric.length === 1 && lowCardinality) return "bar";
+    if (numeric.length === 1) return "histogram";
+    return lowCardinality ? "pie" : "bar";
+  }
+  function chartOptions(data) {
+    const numeric = numericColumns(currentRows, data.columns);
+    const categorical = data.columns.filter(column => !numeric.includes(column));
+    xColumn.innerHTML = data.columns.map(column => `<option value="${escapeHtml(column)}">${escapeHtml(column)}</option>`).join("");
+    yColumn.innerHTML = numeric.map(column => `<option value="${escapeHtml(column)}">${escapeHtml(column)}</option>`).join("");
+    if (!numeric.length) yColumn.innerHTML = `<option value="">No numeric columns</option>`;
+    if (categorical.length) xColumn.value = categorical[0];
+    if (numeric.length >= 2 && chartType.value === "auto") xColumn.value = numeric[0];
+    if (numeric.length) yColumn.value = numeric[Math.min(1, numeric.length - 1)];
+    document.querySelector("#y-label").classList.toggle("hidden", chartType.value === "bar");
+  }
+  function syncChartDefaults() {
+    if (!currentData) return;
+    const numeric = numericColumns(currentRows, currentData.columns);
+    const categorical = currentData.columns.filter(column => !numeric.includes(column));
+    const type = currentChartType();
+    if (["bar", "pie"].includes(type) && categorical.length) xColumn.value = categorical[0];
+    if (["histogram", "violin"].includes(type) && numeric.length) yColumn.value = numeric[0];
+    if (["scatter", "map"].includes(type) && numeric.length >= 2) {
+      xColumn.value = numeric[0];
+      yColumn.value = numeric[1];
+    }
+    document.querySelector("#y-label").classList.toggle("hidden", ["bar", "pie"].includes(type));
+  }
+  function svgText(x, y, text, anchor = "middle", transform = "", fill = "#243b5a") { return `<text x="${x}" y="${y}" text-anchor="${anchor}"${transform ? ` transform="${transform}"` : ""} fill="${fill}" font-size="12" font-weight="600">${escapeHtml(text)}</text>`; }
+  function valueLabel(x, y, text, anchor = "middle") { return showValues.checked ? svgText(x, y, text, anchor) : ""; }
+  function setChartMessage(message) { document.querySelector("#chart").innerHTML = `<div class="chart-empty">${escapeHtml(message)}</div>`; }
+  function currentChartType() { return chartType.value === "auto" ? chooseAutomaticChart(currentData) : chartType.value; }
+  function renderChart() {
+    if (!currentData) return;
+    const columns = currentData.columns, type = currentChartType();
+    const x = xColumn.value, y = yColumn.value;
+    const categoryCount = ["bar", "pie"].includes(type) ? new Set(currentRows.map(row => isMissing(row[x]) ? "Missing" : row[x])).size : 0;
+    const width = Math.max(Number(plotWidthInput.value), type === "bar" ? Math.min(1400, Math.max(categoryCount, 1) * 82) : 0);
+    const crowdedCategories = type === "bar" && categoryCount > 6;
+    const height = Math.max(Number(plotHeightInput.value), crowdedCategories ? 370 : 280), left = 58, bottom = crowdedCategories ? 105 : 38, top = 28, right = 18;
+    const plotWidth = width - left - right, plotHeight = height - top - bottom;
+    if (["scatter", "map"].includes(type) && (!x || !y || x === y)) { setChartMessage(type === "map" ? "Choose latitude and longitude columns for a coordinate map." : "Choose two different numeric columns for a relationship chart."); return; }
+    if (["histogram", "violin"].includes(type) && !y) { setChartMessage("Choose a numeric column for this plot."); return; }
+    if (["bar", "pie"].includes(type) && !x) { setChartMessage("Choose a column for category counts."); return; }
+    let marks = "";
+    if (type === "bar") {
+      const counts = {}; currentRows.forEach(row => { const value = isMissing(row[x]) ? "Missing" : row[x]; counts[value] = (counts[value] || 0) + 1; });
+      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12), max = Math.max(...entries.map(entry => entry[1]), 1), barWidth = plotWidth / Math.max(entries.length, 1);
+      marks = entries.map(([label, count], index) => {
+        const barHeight = count / max * plotHeight, xPosition = left + index * barWidth + barWidth * .15;
+        const labelLimit = Math.max(8, Math.floor(barWidth / (crowdedCategories ? 7 : 6)));
+        const displayLabel = label.length > labelLimit ? `${label.slice(0, labelLimit - 1)}…` : label;
+        const labelX = xPosition + barWidth * .35, labelY = height - (crowdedCategories ? 12 : 10);
+        const labelMarkup = crowdedCategories
+          ? svgText(labelX, labelY, displayLabel, "end", `rotate(-38 ${labelX} ${labelY})`)
+          : svgText(labelX, labelY, displayLabel);
+        return `<rect x="${xPosition}" y="${top + plotHeight - barHeight}" width="${barWidth * .7}" height="${barHeight}" rx="4" fill="#2457c5"><title>${escapeHtml(label)}: ${count}</title></rect>${labelMarkup}${showValues.checked ? valueLabel(labelX, top + plotHeight - barHeight - 6, count) : ""}`;
+      }).join("");
+    } else if (type === "pie") {
+      const counts = {}; currentRows.forEach(row => { const value = isMissing(row[x]) ? "Missing" : row[x]; counts[value] = (counts[value] || 0) + 1; });
+      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12), total = entries.reduce((sum, entry) => sum + entry[1], 0), radius = Math.min(plotWidth, plotHeight) * .34, centerX = left + plotWidth / 2, centerY = top + plotHeight / 2;
+      let angle = -Math.PI / 2;
+      marks = entries.map(([label, count], index) => {
+        const nextAngle = angle + count / total * Math.PI * 2, x1 = centerX + radius * Math.cos(angle), y1 = centerY + radius * Math.sin(angle), x2 = centerX + radius * Math.cos(nextAngle), y2 = centerY + radius * Math.sin(nextAngle), largeArc = nextAngle - angle > Math.PI ? 1 : 0, color = ["#3458d4", "#7f56d9", "#12b76a", "#f79009", "#f04438", "#06aed4"][index % 6];
+        const slice = `<path d="M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${color}"><title>${escapeHtml(label)}: ${count} (${(count / total * 100).toFixed(1)}%)</title></path>`;
+        const labelAngle = angle + (nextAngle - angle) / 2, labelX = centerX + radius * .72 * Math.cos(labelAngle), labelY = centerY + radius * .72 * Math.sin(labelAngle);
+        angle = nextAngle;
+        return slice + (showValues.checked && count / total >= .05 ? valueLabel(labelX, labelY, `${(count / total * 100).toFixed(1)}%`) : "");
+      }).join("");
+      marks += svgText(left + 8, top + 18, `${total} records`, "start");
+    } else if (type === "violin") {
+      const values = numericValues(currentRows, y), min = Math.min(...values), maxValue = Math.max(...values), range = maxValue - min || 1, bins = 12, counts = Array(bins).fill(0);
+      values.forEach(value => counts[Math.min(bins - 1, Math.floor((value - min) / range * bins))] += 1);
+      const maxCount = Math.max(...counts, 1), center = left + plotWidth / 2, scale = plotWidth * .35 / maxCount;
+      marks = counts.map((count, index) => {
+        const yPosition = top + plotHeight - (index + 1) / bins * plotHeight, halfWidth = count * scale, label = (min + (index + .5) / bins * range).toFixed(2);
+        return `<rect x="${center - halfWidth}" y="${yPosition - plotHeight / bins / 2}" width="${halfWidth * 2}" height="${plotHeight / bins - 2}" rx="3" fill="#7f56d9" opacity=".8"><title>${escapeHtml(label)}: ${count} records</title></rect>${valueLabel(center, yPosition, count)}`;
+      }).join("") + svgText(center, height - 10, `${min.toFixed(2)} - ${maxValue.toFixed(2)}`);
+    } else if (type === "map") {
+      const allPoints = currentRows.map(row => [Number(row[x]), Number(row[y])]).filter(point => point.every(Number.isFinite));
+      const points = allPoints.length > 2000 ? allPoints.filter((point, index) => index % Math.ceil(allPoints.length / 2000) === 0) : allPoints;
+      if (!points.length) { setChartMessage("The selected coordinate columns do not contain numeric values."); return; }
+      const xValues = points.map(point => point[0]), yValues = points.map(point => point[1]), xMin = Math.min(...xValues), xMax = Math.max(...xValues), yMin = Math.min(...yValues), yMax = Math.max(...yValues), xRange = xMax - xMin || 1, yRange = yMax - yMin || 1;
+      marks = points.map(([xValue, yValue]) => {
+        const pointX = left + (xValue - xMin) / xRange * plotWidth, pointY = top + plotHeight - (yValue - yMin) / yRange * plotHeight;
+        return `<circle cx="${pointX}" cy="${pointY}" r="5" fill="#12b76a" opacity=".75"><title>${escapeHtml(x)}: ${xValue}, ${escapeHtml(y)}: ${yValue}</title></circle>${showValues.checked && points.length <= 20 ? valueLabel(pointX, pointY - 8, `${xValue}, ${yValue}`) : ""}`;
+      }).join("");
+    } else if (type === "histogram") {
+      const values = numericValues(currentRows, y), min = Math.min(...values), maxValue = Math.max(...values), bins = 10, counts = Array(bins).fill(0), range = maxValue - min || 1;
+      values.forEach(value => counts[Math.min(bins - 1, Math.floor((value - min) / range * bins))] += 1);
+      const maxCount = Math.max(...counts, 1), barWidth = plotWidth / bins;
+      marks = counts.map((count, index) => {
+        const barHeight = count / maxCount * plotHeight, xPosition = left + index * barWidth;
+        return `<rect x="${xPosition + 2}" y="${top + plotHeight - barHeight}" width="${barWidth - 4}" height="${barHeight}" fill="#2457c5"><title>${count} records</title></rect>${showValues.checked ? valueLabel(xPosition + barWidth / 2, top + plotHeight - barHeight - 6, count) : ""}`;
+      }).join("") + svgText(left, height - 10, min.toFixed(2), "start") + svgText(width - right, height - 10, maxValue.toFixed(2), "end");
+    } else {
+      const allPoints = currentRows.map(row => [Number(row[x]), Number(row[y])]).filter(point => point.every(Number.isFinite));
+      const points = allPoints.length > 2000 ? allPoints.filter((point, index) => index % Math.ceil(allPoints.length / 2000) === 0) : allPoints;
+      if (!points.length) { document.querySelector("#chart").innerHTML = `<div class="chart-empty">These columns do not contain enough numeric values to plot.</div>`; return; }
+      const xValues = points.map(point => point[0]), yValues = points.map(point => point[1]), xMin = Math.min(...xValues), xMax = Math.max(...xValues), yMin = Math.min(...yValues), yMax = Math.max(...yValues);
+      const xRange = xMax - xMin || 1, yRange = yMax - yMin || 1;
+      marks = points.map(([xValue, yValue]) => { const pointX = left + (xValue - xMin) / xRange * plotWidth, pointY = top + plotHeight - (yValue - yMin) / yRange * plotHeight; return `<circle cx="${pointX}" cy="${pointY}" r="4" fill="#2457c5" opacity=".7"><title>${escapeHtml(x)}: ${xValue}, ${escapeHtml(y)}: ${yValue}</title></circle>${showValues.checked && points.length <= 20 ? valueLabel(pointX, pointY - 8, yValue) : ""}`; }).join("") + svgText(left, height - 10, xMin.toFixed(2), "start") + svgText(width - right, height - 10, xMax.toFixed(2), "end");
+    }
+    const title = type === "bar" ? `Top values in ${x}` : type === "pie" ? `Share by ${x}` : type === "histogram" ? `Distribution of ${y}` : type === "violin" ? `Violin distribution of ${y}` : type === "map" ? `${x} / ${y} coordinate map` : `${x} vs ${y}`;
+    document.querySelector("#chart").innerHTML = `<svg viewBox="0 0 ${width} ${height}" style="width:${width * Number(chartZoom.value) / 100}px;height:${height * Number(chartZoom.value) / 100}px" role="img" aria-label="${type} chart"><line x1="${left}" y1="${top + plotHeight}" x2="${width - right}" y2="${top + plotHeight}" stroke="#9aabc0"/><line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotHeight}" stroke="#9aabc0"/>${marks}${svgText(width / 2, 18, title, "middle", "", "#243b5a")}</svg>`;
+  }
+  function renderInsightBrief() {
+    if (!currentData) return;
+    const type = currentChartType(), x = xColumn.value, y = yColumn.value;
+    let finding = "This view summarizes the strongest visible structure in the selected data.";
+    let impact = "Use it to prioritize the next business question, then validate the pattern with domain context before acting.";
+    if (["bar", "pie"].includes(type) && x) {
+      const counts = {};
+      currentRows.forEach(row => { const value = isMissing(row[x]) ? "Missing" : row[x]; counts[value] = (counts[value] || 0) + 1; });
+      const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0], share = top ? top[1] / currentRows.length : 0;
+      finding = `${escapeHtml(x)} is concentrated in “${escapeHtml(top ? top[0] : "n/a")}” (${formatPercent(share)} of records).`;
+      impact = share > .5 ? "A dominant segment can distort averages, targeting, and model performance. Consider segment-level KPIs and sampling controls." : "This distribution supports balanced segmentation; compare outcomes across groups before allocating resources.";
+    } else if (["histogram", "violin"].includes(type) && y) {
+      const values = numericValues(currentRows, y), median = percentile(values, .5), mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      finding = `${escapeHtml(y)} has a median of ${median.toFixed(2)} and an average of ${mean.toFixed(2)} across ${values.length.toLocaleString()} valid records.`;
+      impact = Math.abs(mean - median) / (Math.abs(median) || 1) > .2 ? "The mean and median differ materially, indicating skew or extreme values; use robust statistics and investigate the long tail." : "The center is relatively stable; this metric is suitable for baseline monitoring, with alert limits based on business tolerance.";
+    } else if (type === "scatter" && x && y) {
+      const allPoints = currentRows.map(row => [Number(row[x]), Number(row[y])]).filter(point => point.every(Number.isFinite));
+      const points = allPoints.length > 2000 ? allPoints.filter((point, index) => index % Math.ceil(allPoints.length / 2000) === 0) : allPoints;
+      const meanX = points.reduce((sum, point) => sum + point[0], 0) / points.length, meanY = points.reduce((sum, point) => sum + point[1], 0) / points.length;
+      const numerator = points.reduce((sum, point) => sum + (point[0] - meanX) * (point[1] - meanY), 0), denominator = Math.sqrt(points.reduce((sum, point) => sum + (point[0] - meanX) ** 2, 0) * points.reduce((sum, point) => sum + (point[1] - meanY) ** 2, 0)), correlation = denominator ? numerator / denominator : 0;
+      finding = `${escapeHtml(x)} and ${escapeHtml(y)} show a ${Math.abs(correlation) >= .6 ? "strong" : Math.abs(correlation) >= .3 ? "moderate" : "weak"} ${correlation >= 0 ? "positive" : "negative"} linear relationship (r = ${correlation.toFixed(2)}).`;
+      impact = Math.abs(correlation) >= .6 ? "This relationship may support forecasting or prioritization, but correlation is not causation; test confounders before making investment decisions." : "The variables are not strongly linear, so a simple one-factor decision rule may underperform; explore segments, nonlinear effects, or additional drivers.";
+    } else if (type === "map") {
+      finding = `The coordinate view plots ${currentRows.length.toLocaleString()} records across ${escapeHtml(x)} and ${escapeHtml(y)}.`;
+      impact = "Use clusters to identify operational hotspots or coverage gaps. Confirm that the coordinates use the same reference system before geographic decisions.";
+    }
+    document.querySelector("#insight-brief").innerHTML = `<h3>Executive interpretation</h3><p><strong>What the plot shows:</strong> ${finding}</p><p><strong>Potential business impact:</strong> ${impact}</p><p class="muted">This is an analytical signal, not a causal conclusion. Validate material decisions against source quality, time period, and business context.</p>`;
+  }
+  function thresholds() {
+    return {
+      missing: Math.max(0, Math.min(100, Number(document.querySelector("#missing-threshold").value) || 0)),
+      duplicates: Math.max(0, Math.min(100, Number(document.querySelector("#duplicate-threshold").value) || 0)),
+      outliers: Math.max(0, Math.min(100, Number(document.querySelector("#outlier-threshold").value) || 0))
+    };
+  }
+  function render(rows, data) {
+    currentRows = rows; currentData = data;
+    results.classList.remove("hidden"); reportButton.classList.remove("hidden");
+    pdfButton.classList.remove("hidden");
+    chartOptions(data);
+    syncChartDefaults();
+    renderChart();
+    renderInsightBrief();
+    document.querySelector("#score-value").textContent = `${data.score}/100`;
+    document.querySelector("#score-description").textContent = data.score >= 90 ? "Great quality. No major issues detected." : data.score >= 70 ? "Review the flagged issues before using this data." : "This dataset needs attention before production use.";
+    const metricData = [["Rows", rows.length], ["Columns", data.columns.length], ["Missing cells", data.missingCells], ["Duplicate rows", data.duplicateRows]];
+    document.querySelector("#metrics").innerHTML = metricData.map(([label, value]) => `<div class="card metric"><span class="muted">${label}</span><strong>${value.toLocaleString()}</strong></div>`).join("");
+    document.querySelector("#missing-chart").innerHTML = data.columns.map(column => `<div class="bar-row"><span>${escapeHtml(column)}</span><div class="bar"><span style="width:${data.missingByColumn[column] / rows.length * 100}%"></span></div><b>${data.missingByColumn[column]}</b></div>`).join("");
+    document.querySelector("#summary").innerHTML = `<table><thead><tr><th>Column</th><th>Type</th><th>Missing</th><th>Unique</th></tr></thead><tbody>${data.columns.map(column => {
+      const values = rows.map(row => row[column]).filter(value => !isMissing(value));
+      return `<tr><td>${escapeHtml(column)}</td><td>${numericValues(rows, column).length >= 4 ? "number" : "text"}</td><td>${data.missingByColumn[column]}</td><td>${new Set(values).size}</td></tr>`;
+    }).join("")}</tbody></table>`;
+    document.querySelector("#issues").innerHTML = data.issues.map(issue => `<div class="issue">${escapeHtml(issue)}</div>`).join("");
+    document.querySelector("#preview").innerHTML = `<table><thead><tr>${data.columns.map(column => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.slice(0, 100).map(row => `<tr>${data.columns.map(column => `<td>${escapeHtml(row[column])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    latestReport = [["Metric", "Value"], ["Rows", rows.length], ["Columns", data.columns.length], ["Missing cells", data.missingCells], ["Missing rate", formatPercent(data.missingRate)], ["Duplicate rows", data.duplicateRows], ["Duplicate rate", formatPercent(data.duplicateRate)], ["Outlier cells", data.outlierCells], ["Outlier rate", formatPercent(data.outlierRate)], ["Numeric columns", data.numericColumns.length], ["Health score", data.score], ["Thresholds", `missing ${data.thresholds.missing}%, duplicates ${data.thresholds.duplicates}%, outliers ${data.thresholds.outliers}%`]];
+  }
+  function handleFileSelection(fileList) {
+    selectedFiles = [...fileList];
+    if (!selectedFiles.length) { error.textContent = "Select at least one supported data file."; results.classList.add("hidden"); return; }
+    datasetSelect.innerHTML = selectedFiles.map((file, index) => `<option value="${index}">${escapeHtml(file.webkitRelativePath || file.name)}</option>`).join("");
+    datasetPicker.classList.remove("hidden");
+    datasetStatus.textContent = `${selectedFiles.length} dataset${selectedFiles.length === 1 ? "" : "s"} available`;
+    analyzeSelectedFile(0);
+  }
+  fileInput.addEventListener("change", () => handleFileSelection(fileInput.files));
+  folderInput.addEventListener("change", () => handleFileSelection(folderInput.files));
+  async function analyzeSelectedFile(index) {
+    const file = selectedFiles[index];
+    if (!file) return;
+    try {
+      const rows = await parseFile(file);
+      render(rows, analyze(rows, thresholds()));
+      error.textContent = "";
+      datasetStatus.textContent = `${selectedFiles.length} dataset${selectedFiles.length === 1 ? "" : "s"} available · analyzing ${file.webkitRelativePath || file.name}`;
+    } catch (exception) {
+      error.textContent = `${file.name}: ${exception.message}`;
+      results.classList.add("hidden");
+    }
+  }
+  datasetSelect.addEventListener("change", () => analyzeSelectedFile(Number(datasetSelect.value)));
+  ["missing-threshold", "duplicate-threshold", "outlier-threshold"].forEach(id => document.querySelector(`#${id}`).addEventListener("change", () => {
+    if (currentRows.length) render(currentRows, analyze(currentRows, thresholds()));
+  }));
+  chartType.addEventListener("change", () => { syncChartDefaults(); renderChart(); renderInsightBrief(); });
+  [xColumn, yColumn].forEach(control => control.addEventListener("change", () => { renderChart(); renderInsightBrief(); }));
+  [chartZoom, plotWidthInput, plotHeightInput].forEach(control => control.addEventListener("input", () => {
+    document.querySelector("#chart-zoom-value").textContent = `${chartZoom.value}%`;
+    document.querySelector("#plot-width-value").textContent = `${plotWidthInput.value}px`;
+    document.querySelector("#plot-height-value").textContent = `${plotHeightInput.value}px`;
+    renderChart();
+  }));
+  showValues.addEventListener("change", renderChart);
+  resetChart.addEventListener("click", () => {
+    chartZoom.value = 100; plotWidthInput.value = 720; plotHeightInput.value = 320; showValues.checked = true;
+    document.querySelector("#chart-zoom-value").textContent = "100%";
+    document.querySelector("#plot-width-value").textContent = "720px";
+    document.querySelector("#plot-height-value").textContent = "320px";
+    renderChart();
+  });
+  reportButton.addEventListener("click", () => {
+    const csv = latestReport.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); link.download = "data-health-report.csv"; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 0);
+  });
+  pdfButton.addEventListener("click", () => {
+    if (!currentData) return;
+    const reportWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!reportWindow) {
+      error.textContent = "The PDF report window was blocked. Allow pop-ups for this site and try again.";
+      return;
+    }
+    const rows = [
+      ["Rows", currentRows.length],
+      ["Columns", currentData.columns.length],
+      ["Missing cells", `${currentData.missingCells} (${formatPercent(currentData.missingRate)})`],
+      ["Duplicate rows", `${currentData.duplicateRows} (${formatPercent(currentData.duplicateRate)})`],
+      ["Outlier cells", `${currentData.outlierCells} (${formatPercent(currentData.outlierRate)})`],
+      ["Numeric columns", currentData.numericColumns.length],
+      ["Health score", `${currentData.score}/100`]
+    ];
+    const issues = currentData.issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join("");
+    const summary = currentData.columns.map(column => {
+      const values = currentRows.map(row => row[column]).filter(value => !isMissing(value));
+      return `<tr><td>${escapeHtml(column)}</td><td>${numericValues(currentRows, column).length >= 4 ? "Number" : "Text"}</td><td>${currentData.missingByColumn[column]}</td><td>${new Set(values).size}</td></tr>`;
+    }).join("");
+    reportWindow.document.write(`<!doctype html><html><head><title>Data Health Report</title><style>
+      body{font:14px Arial,sans-serif;color:#172033;max-width:850px;margin:40px auto;line-height:1.5}
+      h1{font-size:28px;margin-bottom:4px}h2{font-size:18px;margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:6px}
+      .score{font-size:26px;font-weight:bold;color:#3458d4;margin:20px 0}
+      table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #ddd}
+      th{background:#f2f4f7}li{margin:8px 0}.meta{color:#667085}
+      @media print{body{margin:15mm}.no-print{display:none}}
+    </style></head><body>
+      <h1>Data Health Monitor</h1><div class="meta">Generated ${escapeHtml(new Date().toLocaleString())}</div>
+      <div class="score">Health score: ${currentData.score}/100</div>
+      <h2>Quality metrics</h2><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><td>${label}</td><td>${value}</td></tr>`).join("")}</tbody></table>
+      <h2>Issues and recommendations</h2><ul>${issues}</ul>
+      <h2>Column summary</h2><table><thead><tr><th>Column</th><th>Type</th><th>Missing</th><th>Unique</th></tr></thead><tbody>${summary}</tbody></table>
+      <p class="meta">Thresholds: missing ${currentData.thresholds.missing}%, duplicates ${currentData.thresholds.duplicates}%, outliers ${currentData.thresholds.outliers}%.</p>
+      <button class="no-print" onclick="window.print()">Print / Save as PDF</button>
+    </body></html>`);
+    reportWindow.document.close();
+    reportWindow.focus();
+    reportWindow.print();
+  });
+</script>
+</body>
+</html>
