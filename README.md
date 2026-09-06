@@ -49,8 +49,9 @@ Use the file picker to select multiple supported files or an entire folder. The 
 ### Reports
 
 - Downloadable CSV health report
-- Printable report with browser **Save as PDF** support
-- Report includes quality metrics, rates, thresholds, and column summaries
+- Printable report with browser **Save as PDF** support, rendered through a hidden same-page frame so it isn't affected by browser pop-up blockers (no new window/tab is opened)
+- Report includes quality metrics, rates, thresholds, column summaries, the missing-values-by-column chart, and the currently selected data insight chart with its executive interpretation
+- If the print dialog can't be triggered automatically (for example, in an unusual embedded or sandboxed browsing context), the report is downloaded instead as a standalone HTML file that can be opened and printed to PDF manually
 
 ## Quick start
 
@@ -75,6 +76,32 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Deploy to Netlify
+
+1. Push this repository to GitHub.
+2. In Netlify, select **Add new site → Import an existing project**.
+3. Select the GitHub repository.
+4. Use these settings:
+   - Build command: leave blank
+   - Publish directory: `.`
+5. Deploy the site.
+
+The included `netlify.toml` configures the static publish directory. Security headers are defined in `_headers`.
+
+## Project structure
+
+```text
+.
+├── index.html                    # Static browser application
+├── app.py                        # Optional Streamlit application
+├── requirements.txt              # Streamlit dependencies
+├── netlify.toml                  # Netlify configuration
+├── _headers                      # Netlify security headers
+├── sample-data.csv               # CSV test fixture
+├── sample-data.json              # JSON test fixture
+└── ai_jobs_salaries_clean.csv    # Larger validation dataset
+```
+
 ## Performance and limitations
 
 - There is no application-level file-size threshold. Browser memory, device capacity, and hosting/browser limits still apply to very large files.
@@ -85,7 +112,7 @@ streamlit run app.py
 
 ## Validation results
 
-The application was validated with the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce), using the CSV files
+The application was validated with the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce), using the CSV files in the local `archive/` folder.
 
 | File | Rows | Health score |
 | --- | ---: | ---: |

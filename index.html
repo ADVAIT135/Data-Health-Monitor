@@ -474,13 +474,7 @@
     const csv = latestReport.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
     const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); link.download = "data-health-report.csv"; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 0);
   });
-  pdfButton.addEventListener("click", () => {
-    if (!currentData) return;
-    const reportWindow = window.open("", "_blank", "noopener,noreferrer");
-    if (!reportWindow) {
-      error.textContent = "The PDF report window was blocked. Allow pop-ups for this site and try again.";
-      return;
-    }
+  function buildReportHtml() {
     const rows = [
       ["Rows", currentRows.length],
       ["Columns", currentData.columns.length],
@@ -495,25 +489,83 @@
       const values = currentRows.map(row => row[column]).filter(value => !isMissing(value));
       return `<tr><td>${escapeHtml(column)}</td><td>${numericValues(currentRows, column).length >= 4 ? "Number" : "Text"}</td><td>${currentData.missingByColumn[column]}</td><td>${new Set(values).size}</td></tr>`;
     }).join("");
-    reportWindow.document.write(`<!doctype html><html><head><title>Data Health Report</title><style>
+    // Snapshot the currently rendered charts/interpretation so the report matches what's on screen.
+    const missingChartMarkup = document.querySelector("#missing-chart").innerHTML;
+    const chartMarkup = document.querySelector("#chart").innerHTML;
+    const insightBriefMarkup = document.querySelector("#insight-brief").innerHTML;
+    return `<!doctype html><html><head><title>Data Health Report</title><style>
       body{font:14px Arial,sans-serif;color:#172033;max-width:850px;margin:40px auto;line-height:1.5}
       h1{font-size:28px;margin-bottom:4px}h2{font-size:18px;margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:6px}
       .score{font-size:26px;font-weight:bold;color:#3458d4;margin:20px 0}
       table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #ddd}
       th{background:#f2f4f7}li{margin:8px 0}.meta{color:#667085}
-      @media print{body{margin:15mm}.no-print{display:none}}
+      .bar-row{display:grid;grid-template-columns:minmax(90px,1fr) 2fr 48px;gap:10px;align-items:center;margin:10px 0;font-size:13px}
+      .bar{height:10px;border-radius:8px;background:#dce8f7;overflow:hidden}
+      .bar span{display:block;height:100%;background:#2457c5}
+      .chart-wrap{margin:14px 0}
+      .chart-wrap svg{max-width:100% !important;height:auto !important;display:block;margin:0 auto}
+      .chart-empty{color:#667085;text-align:center;padding:24px 0}
+      .insight-brief{margin-top:14px;padding:16px;border:1px solid #b9cbea;border-radius:10px;background:#edf4ff}
+      .insight-brief h3{margin:0 0 8px;font-size:15px}
+      .insight-brief p{margin:6px 0}
+      @media print{body{margin:15mm}.no-print{display:none}.chart-wrap svg{max-width:100%;height:auto}}
     </style></head><body>
       <h1>Data Health Monitor</h1><div class="meta">Generated ${escapeHtml(new Date().toLocaleString())}</div>
       <div class="score">Health score: ${currentData.score}/100</div>
       <h2>Quality metrics</h2><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><td>${label}</td><td>${value}</td></tr>`).join("")}</tbody></table>
+      <h2>Missing values by column</h2>${missingChartMarkup || '<p class="meta">No columns to chart.</p>'}
       <h2>Issues and recommendations</h2><ul>${issues}</ul>
+      <h2>Data insight chart</h2><div class="chart-wrap">${chartMarkup}</div>${insightBriefMarkup ? `<div class="insight-brief">${insightBriefMarkup}</div>` : ""}
       <h2>Column summary</h2><table><thead><tr><th>Column</th><th>Type</th><th>Missing</th><th>Unique</th></tr></thead><tbody>${summary}</tbody></table>
       <p class="meta">Thresholds: missing ${currentData.thresholds.missing}%, duplicates ${currentData.thresholds.duplicates}%, outliers ${currentData.thresholds.outliers}%.</p>
-      <button class="no-print" onclick="window.print()">Print / Save as PDF</button>
-    </body></html>`);
-    reportWindow.document.close();
-    reportWindow.focus();
-    reportWindow.print();
+    </body></html>`;
+  }
+  function downloadReportHtml() {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([buildReportHtml()], { type: "text/html" }));
+    link.download = "data-health-report.html";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 0);
+    error.textContent = "Couldn't open the print dialog automatically, so the report downloaded as an HTML file instead. Open it and use your browser's Print > Save as PDF option.";
+  }
+  pdfButton.addEventListener("click", () => {
+    if (!currentData) return;
+    error.textContent = "";
+    // Print via a hidden same-page iframe instead of window.open(): this avoids
+    // browser pop-up blockers entirely, since no new window/tab is created.
+    let printFrame;
+    try {
+      printFrame = document.createElement("iframe");
+      printFrame.setAttribute("aria-hidden", "true");
+      printFrame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+      document.body.appendChild(printFrame);
+      const frameWindow = printFrame.contentWindow;
+      if (!frameWindow) throw new Error("No printable frame available");
+      frameWindow.document.open();
+      frameWindow.document.write(buildReportHtml());
+      frameWindow.document.close();
+
+      let cleaned = false;
+      const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        if (printFrame.parentNode) printFrame.parentNode.removeChild(printFrame);
+      };
+      frameWindow.addEventListener("afterprint", cleanup, { once: true });
+      setTimeout(() => {
+        try {
+          frameWindow.focus();
+          frameWindow.print();
+        } catch (printException) {
+          cleanup();
+          downloadReportHtml();
+        }
+        setTimeout(cleanup, 60000); // safety net if afterprint never fires
+      }, 150);
+    } catch (exception) {
+      if (printFrame && printFrame.parentNode) printFrame.parentNode.removeChild(printFrame);
+      downloadReportHtml();
+    }
   });
 </script>
 </body>
